@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useCallback } from 'react'
 import { calculateChangeBreakdown, roundChange } from '../utils/changeCalculator'
 import { findOptimalChange } from '../utils/changeOptimizer'
 
@@ -14,53 +14,39 @@ export function useCalculator() {
   const [isSuggestionApplied, setIsSuggestionApplied] = useState(false)
   const [errors, setErrors] = useState({})
 
-  const validateInputs = () => {
+  const handleCalculate = useCallback(() => {
     const newErrors = {}
+    const bill = parseFloat(billAmount)
+    const paid = parseFloat(amountPaid)
 
-    if (!billAmount) {
-      newErrors.billAmount = 'Suma facturii este obligatorie'
-    } else {
-      const num = parseFloat(billAmount)
-      if (isNaN(num) || num <= 0) {
-        newErrors.billAmount = 'Suma facturii trebuie să fie un număr pozitiv'
-      }
+    if (!billAmount || isNaN(bill) || bill <= 0) {
+      newErrors.billAmount = 'Introdu o sumă validă'
     }
-
-    if (!amountPaid) {
-      newErrors.amountPaid = 'Suma plătită este obligatorie'
-    } else {
-      const num = parseFloat(amountPaid)
-      if (isNaN(num) || num <= 0) {
-        newErrors.amountPaid = 'Suma plătită trebuie să fie un număr pozitiv'
-      }
+    if (!amountPaid || isNaN(paid) || paid <= 0) {
+      newErrors.amountPaid = 'Introdu o sumă validă'
     }
-
-    if (billAmount && amountPaid) {
-      const bill = parseFloat(billAmount)
-      const paid = parseFloat(amountPaid)
-      if (paid < bill) {
-        newErrors.amountPaid =
-          'Suma plătită trebuie să fie mai mare sau egală cu suma facturii'
-      }
+    if (!newErrors.billAmount && !newErrors.amountPaid && paid < bill) {
+      newErrors.amountPaid = 'Suma plătită e mai mică decât factura'
     }
 
     setErrors(newErrors)
-    return Object.keys(newErrors).length === 0
-  }
+    if (Object.keys(newErrors).length > 0) return
 
-  const handleCalculate = () => {
-    if (!validateInputs()) return
-
-    const bill = parseFloat(billAmount)
-    const paid = parseFloat(amountPaid)
     const change = paid - bill
+    if (change === 0) {
+      setTotalChange(0)
+      setChangeBreakdown({})
+      setSuggestion(null)
+      setOriginalChange(0)
+      setOriginalBreakdown({})
+      setOriginalAmountPaid(paid.toString())
+      setIsSuggestionApplied(false)
+      return
+    }
 
-    // Round the change according to the rule (145.43 -> 145, 145.67 -> 146)
     const roundedChange = roundChange(change)
-    // Calculate breakdown using the rounded amount
     const breakdown = calculateChangeBreakdown(roundedChange)
 
-    // Store original values (reset if this is a new calculation)
     setOriginalChange(roundedChange)
     setOriginalBreakdown(breakdown)
     setOriginalAmountPaid(paid.toString())
@@ -69,23 +55,20 @@ export function useCalculator() {
     setTotalChange(roundedChange)
     setChangeBreakdown(breakdown)
 
-    // Find optimal change suggestion (only if change is significant, > 50 lei)
     if (roundedChange > 50) {
-      const optimal = findOptimalChange(roundedChange, 20)
-      setSuggestion(optimal)
+      setSuggestion(findOptimalChange(roundedChange, 20))
     } else {
       setSuggestion(null)
     }
-  }
+  }, [billAmount, amountPaid])
 
-  const handleApplySuggestion = () => {
+  const handleApplySuggestion = useCallback(() => {
     if (!suggestion) return
 
     const bill = parseFloat(billAmount)
     const newPaid = bill + suggestion.optimalChange
     setAmountPaid(newPaid.toString())
 
-    // Recalculate with new amount
     const newChange = suggestion.optimalChange
     const breakdown = calculateChangeBreakdown(newChange)
 
@@ -93,27 +76,24 @@ export function useCalculator() {
     setChangeBreakdown(breakdown)
     setIsSuggestionApplied(true)
     setSuggestion(null)
-  }
+  }, [suggestion, billAmount])
 
-  const handleRevertSuggestion = () => {
-    if (!originalChange || !originalBreakdown) return
+  const handleRevertSuggestion = useCallback(() => {
+    if (originalChange == null || !originalBreakdown) return
 
-    // Restore original values
     setTotalChange(originalChange)
     setChangeBreakdown(originalBreakdown)
     setAmountPaid(originalAmountPaid)
     setIsSuggestionApplied(false)
 
-    // Recalculate suggestion for original amount
     if (originalChange > 50) {
-      const optimal = findOptimalChange(originalChange, 20)
-      setSuggestion(optimal)
+      setSuggestion(findOptimalChange(originalChange, 20))
     } else {
       setSuggestion(null)
     }
-  }
+  }, [originalChange, originalBreakdown, originalAmountPaid])
 
-  const handleReset = () => {
+  const handleReset = useCallback(() => {
     setBillAmount('')
     setAmountPaid('')
     setChangeBreakdown(null)
@@ -124,7 +104,7 @@ export function useCalculator() {
     setOriginalAmountPaid(null)
     setIsSuggestionApplied(false)
     setErrors({})
-  }
+  }, [])
 
   return {
     billAmount,
@@ -136,7 +116,6 @@ export function useCalculator() {
     isSuggestionApplied,
     setBillAmount,
     setAmountPaid,
-    validateInputs,
     handleCalculate,
     handleReset,
     handleApplySuggestion,
